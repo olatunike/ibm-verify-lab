@@ -1,0 +1,10 @@
+# Python virtual environment — never commit; machine-specific
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets — NEVER commit
+.env
+
+# macOS clutter
+.DS_Store
