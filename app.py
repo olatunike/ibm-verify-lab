@@ -8,6 +8,8 @@ provider to authenticate users. IBM Verify is the identity provider
 
 import base64
 import hashlib
+import html
+import json
 import os
 import secrets
 from urllib.parse import urlencode
