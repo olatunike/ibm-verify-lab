@@ -1,45 +1,53 @@
 """
-IBM Verify Lab — a minimal relying-party application used to
-exercise IBM Verify SaaS: OIDC login, attribute mapping,
-MFA via access policy, and real-time webhooks.
+IBM Verify Lab — an OpenID Connect relying party (RP).
 
-Stage 1: prove the web server runs.
+A "relying party" is the application that RELIES ON an identity
+provider to authenticate users. IBM Verify is the identity provider
+(the OP, or OpenID Provider). This app is the RP.
 """
 
+import os
+
+from dotenv import load_dotenv
 from flask import Flask
 
-# Create the web application object.
-# __name__ tells Flask where this file lives, so it can locate
-# templates and static files relative to it.
+# ---------------------------------------------------------------
+# Read the .env file into the process environment.
+# ---------------------------------------------------------------
+load_dotenv()
+
+
+def required_env(name: str) -> str:
+    """Read an environment variable, refusing to continue if it's absent."""
+    value = os.environ.get(name)
+    if not value or value.startswith("paste_") or value.startswith("change_me"):
+        raise RuntimeError(
+            f"Environment variable {name} is missing or still a placeholder. "
+            f"Check your .env file."
+        )
+    return value
+
+
+DISCOVERY_URL = required_env("VERIFY_DISCOVERY_URL")
+CLIENT_ID = required_env("VERIFY_CLIENT_ID")
+CLIENT_SECRET = required_env("VERIFY_CLIENT_SECRET")
+REDIRECT_URI = required_env("VERIFY_REDIRECT_URI")
+
+SCOPES = "openid profile email"
+
 app = Flask(__name__)
+app.secret_key = required_env("FLASK_SECRET_KEY")
+
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
 
 
-# A "route" maps a URL path to a Python function.
-# "/" is the site root — http://localhost:8000/
 @app.route("/")
 def home():
-    return """
-    <html>
-      <body style="font-family: system-ui; padding: 40px;">
-        <h1>IBM Verify Lab</h1>
-        <p>Stage 1 complete — the application is running.</p>
-        <p>Next: connect this app to IBM Verify for login.</p>
-      </body>
-    </html>
-    """
+    return f"<h1>IBM Verify Lab</h1><p>Config loaded. Client ID ends in: <code>...{CLIENT_ID[-6:]}</code></p>"
 
 
-# A health check. Standard practice for any deployed service:
-# load balancers and monitoring call this to ask "are you alive?"
-@app.route("/healthz")
-def health():
-    return {"status": "ok"}
-
-
-# This block runs only when you execute the file directly
-# (python app.py), not when something imports it.
 if __name__ == "__main__":
-    # Port 8000, not Flask's default 5000 — on macOS, port 5000
-    # is taken by the AirPlay Receiver service.
-    # host 127.0.0.1 means only this machine can reach the server.
     app.run(host="127.0.0.1", port=8000, debug=True)
