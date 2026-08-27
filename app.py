@@ -6,12 +6,16 @@ provider to authenticate users. IBM Verify is the identity provider
 (the OP, or OpenID Provider). This app is the RP.
 """
 
+import base64
+import hashlib
 import os
+import secrets
+from urllib.parse import urlencode
 
 import jwt
 import requests
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, redirect, request, session, url_for
 
 # ---------------------------------------------------------------
 # Read the .env file into the process environment.
@@ -48,8 +52,18 @@ app.config.update(
 
 @app.route("/")
 def home():
-    return f"<h1>IBM Verify Lab</h1><p>Config loaded. Client ID ends in: <code>...{CLIENT_ID[-6:]}</code></p>"
-
+    return f"""
+    <h1>IBM Verify Lab</h1>
+    <p>Relying party for tenant <code>{os.environ.get('VERIFY_TENANT')}</code></p>
+    <p>
+      <a href="{url_for('login_preview')}">Inspect the authorization request</a> &nbsp;|&nbsp;
+      <a href="{url_for('login')}">Sign in with IBM Verify</a>
+    </p>
+    <p>
+      <a href="/config">Tenant configuration</a> &nbsp;|&nbsp;
+      <a href="/pkce-demo">PKCE demo</a>
+    </p>
+    """
 # ---------------------------------------------------------------
 # OIDC discovery — read the tenant's configuration from Verify
 # ---------------------------------------------------------------
@@ -121,6 +135,117 @@ def show_config():
       <tr><th>kid</th><th>kty</th><th>alg</th><th>use</th></tr>
       {key_rows}
     </table>
+    <p><a href="/">Back</a></p>
+    """
+# ---------------------------------------------------------------
+# PKCE — RFC 7636. Required: your app has PKCE enabled in Verify.
+# ---------------------------------------------------------------
+
+
+def _b64url(raw: bytes) -> str:
+    """Base64url-encode with padding stripped, as the OAuth specs require."""
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def make_pkce_pair() -> tuple[str, str]:
+    """Return (code_verifier, code_challenge)."""
+    verifier = _b64url(secrets.token_bytes(32))
+    challenge = _b64url(hashlib.sha256(verifier.encode("ascii")).digest())
+    return verifier, challenge
+
+
+@app.route("/pkce-demo")
+def pkce_demo():
+    """Lab route: generate a pair and prove the hash relationship."""
+    verifier, challenge = make_pkce_pair()
+    recomputed = _b64url(hashlib.sha256(verifier.encode("ascii")).digest())
+    matches = "YES" if recomputed == challenge else "NO"
+
+    return f"""
+    <h1>PKCE pair</h1>
+    <table border="1" cellpadding="8" cellspacing="0">
+      <tr><th>code_verifier</th><td><code>{verifier}</code></td></tr>
+      <tr><th>length</th><td>{len(verifier)} chars (spec requires 43-128)</td></tr>
+      <tr><th>code_challenge</th><td><code>{challenge}</code></td></tr>
+      <tr><th>method</th><td><code>S256</code></td></tr>
+      <tr><th>Challenge recomputes from verifier?</th><td><b>{matches}</b></td></tr>
+    </table>
+    <p>Reload for a fresh pair - every login attempt gets its own.</p>
+    <p><a href="/">Back</a></p>
+    """
+
+
+# ---------------------------------------------------------------
+# Authorization request - step 1 of the code flow
+# ---------------------------------------------------------------
+
+
+def build_auth_request() -> tuple[str, dict]:
+    """Build the authorization request; stash its secrets in the session."""
+    config = oidc_config()
+
+    verifier, challenge = make_pkce_pair()
+    state = secrets.token_urlsafe(32)
+    nonce = secrets.token_urlsafe(32)
+
+    session["pkce_verifier"] = verifier
+    session["oidc_state"] = state
+    session["oidc_nonce"] = nonce
+
+    params = {
+        "client_id": CLIENT_ID,
+        "response_type": "code",
+        "scope": SCOPES,
+        "redirect_uri": REDIRECT_URI,
+        "state": state,
+        "nonce": nonce,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+    }
+
+    url = f"{config['authorization_endpoint']}?{urlencode(params)}"
+    return url, params
+
+
+@app.route("/login-preview")
+def login_preview():
+    """Lab route: show the authorization request before sending it."""
+    url, params = build_auth_request()
+
+    rows = ""
+    for key, value in params.items():
+        rows += f"<tr><td><code>{key}</code></td><td><code>{value}</code></td></tr>"
+
+    return f"""
+    <h1>Authorization request</h1>
+    <p>What your browser is about to send to IBM Verify.</p>
+    <table border="1" cellpadding="6" cellspacing="0">{rows}</table>
+    <h3>Full URL</h3>
+    <p style="word-break:break-all"><code>{url}</code></p>
+    <p><a href="{url}">Continue to IBM Verify &rarr;</a></p>
+    <p><a href="/">Back</a></p>
+    """
+
+
+@app.route("/login")
+def login():
+    """Redirect the browser to IBM Verify to authenticate."""
+    url, _ = build_auth_request()
+    return redirect(url)
+
+
+@app.route("/callback")
+def callback():
+    """Placeholder - Block 5 implements the token exchange."""
+    rows = ""
+    for k, v in request.args.items():
+        rows += f"<tr><td><code>{k}</code></td><td><code>{v[:60]}...</code></td></tr>"
+
+    return f"""
+    <h1>Callback reached</h1>
+    <p>IBM Verify redirected here. Raw query parameters:</p>
+    <table border="1" cellpadding="6" cellspacing="0">{rows}</table>
+    <p>Block 5 will exchange this code for tokens.</p>
     <p><a href="/">Back</a></p>
     """
 if __name__ == "__main__":
