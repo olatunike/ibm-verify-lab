@@ -1,0 +1,16 @@
+{
+  "_comment": "Input for IBM's runjs utility. Lab-Admins member who completed a second factor: expect clearance=high, mfa=true.",
+  "clientID": "lab-app",
+  "claimjson": {
+    "scope": ["openid", "profile", "email"]
+  },
+  "stsuujson": {
+    "principal": { "name": "mobileye" },
+    "attributes": [
+      { "name": "department",            "type": "urn:ibm:names:ITFIM:5.1:accessmanager", "value": "Identity Platform" },
+      { "name": "title",                 "type": "urn:ibm:names:ITFIM:5.1:accessmanager", "value": "Engineer" },
+      { "name": "groups",                "type": "urn:ibm:names:ITFIM:5.1:accessmanager", "value": ["admin", "Lab-Admins"] },
+      { "name": "authenticationMethods", "type": "urn:ibm:names:ITFIM:5.1:accessmanager", "value": ["password", "totp"] }
+    ]
+  }
+}
