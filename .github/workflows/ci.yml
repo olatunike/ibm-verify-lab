@@ -1,0 +1,90 @@
+name: CI
+
+# Runs on every push and pull request. No tenant, no secrets, no network
+# calls to IBM Verify — the suites are built to prove logic and security
+# properties without them.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+
+  relying-party:
+    name: Relying party (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install flask python-dotenv requests "pyjwt[crypto]"
+
+      - name: Compile check
+        run: python -m compileall -q app.py
+
+      - name: Smoke tests and security assertions
+        run: python tests/smoke_test.py
+
+  mapping-rules:
+    name: Verify Identity Access mapping rules (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run mapping rule tests
+        run: node verify-identity-access/test/run-tests.js
+
+  secret-scan:
+    name: No credentials in the tree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: .env must never be tracked
+        run: |
+          if git ls-files --error-unmatch .env 2>/dev/null; then
+            echo "::error::.env is tracked by git"
+            exit 1
+          fi
+          echo ".env is not tracked"
+
+      - name: .env must never have been committed, on any branch
+        run: |
+          if [ -n "$(git log --all --full-history --oneline -- .env)" ]; then
+            echo "::error::.env appears in git history"
+            git log --all --full-history --oneline -- .env
+            exit 1
+          fi
+          echo ".env has never been committed"
+
+      - name: No literal secret assignments in tracked files
+        run: |
+          # Matches an assignment whose value is a quoted literal of any
+          # length, e.g. client_secret = "abc123". Reading from the
+          # environment is the accepted form and does not match.
+          if git grep -nEi \
+            '(client_secret|api_key|password|secret_key)[[:space:]]*=[[:space:]]*["'"'"'][^"'"'"']{8,}' \
+            -- ':!*.md' ':!.env.example' ; then
+            echo "::error::possible hard-coded credential"
+            exit 1
+          fi
+          echo "no literal credential assignments found"
