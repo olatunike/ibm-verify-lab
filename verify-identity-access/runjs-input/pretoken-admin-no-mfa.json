@@ -1,0 +1,15 @@
+{
+  "_comment": "Same Lab-Admins member, password only. Expect the rule to DOWNSCOPE clearance from high to standard and record the reason in the trace.",
+  "clientID": "lab-app",
+  "claimjson": {
+    "scope": ["openid", "profile", "email"]
+  },
+  "stsuujson": {
+    "principal": { "name": "mobileye" },
+    "attributes": [
+      { "name": "department",            "type": "urn:ibm:names:ITFIM:5.1:accessmanager", "value": "Identity Platform" },
+      { "name": "groups",                "type": "urn:ibm:names:ITFIM:5.1:accessmanager", "value": ["admin", "Lab-Admins"] },
+      { "name": "authenticationMethods", "type": "urn:ibm:names:ITFIM:5.1:accessmanager", "value": ["password"] }
+    ]
+  }
+}
